@@ -481,7 +481,7 @@ def draw_focus_dashboard(frame: np.ndarray, metrics: FocusMetrics, analyzer: Foc
     state_text = f"State: {metrics.state.upper()}"
     state_color = get_state_color(metrics.state)
     cv2.putText(frame, state_text, (x_margin, y_pos),
-                cv2.FONT_HERSHEY_BOLD, 0.7, state_color, 2)
+                cv2.FONT_HERSHEY_DUPLEX, 0.7, state_color, 2)
     y_pos += 30
 
     # Focus score
@@ -730,7 +730,7 @@ def parse_args():
     )
     p.add_argument(
         "--source",
-        default=1,
+        default=0,
         help="Video source: 0 for webcam (default), or path to a video file",
     )
     p.add_argument(
