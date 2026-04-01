@@ -481,7 +481,7 @@ def draw_focus_dashboard(frame: np.ndarray, metrics: FocusMetrics, analyzer: Foc
     state_text = f"State: {metrics.state.upper()}"
     state_color = get_state_color(metrics.state)
     cv2.putText(frame, state_text, (x_margin, y_pos),
-                cv2.FONT_HERSHEY_BOLD, 0.7, state_color, 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, state_color, 2)
     y_pos += 30
 
     # Focus score
