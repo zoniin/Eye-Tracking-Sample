@@ -1,4 +1,10 @@
-dlib>=19.24.0
+# Face detection backends
+mediapipe>=0.10.9           # Primary backend (required) - 3-5x faster than dlib
+dlib>=19.24.0               # Legacy backend (optional - use with --backend dlib)
+
+# Computer vision
 opencv-python>=4.8.0
 numpy>=1.24.0
+
+# Utilities
 imutils>=0.5.4
