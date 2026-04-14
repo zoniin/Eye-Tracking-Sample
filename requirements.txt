@@ -3,11 +3,11 @@ opencv-python>=4.8.0
 numpy>=1.24.0
 mediapipe>=0.10.0
 pyyaml>=6.0
+imutils>=0.5.4
 
-# Legacy dlib support (optional, for backwards compatibility)
+# Legacy dlib support (optional, for V1 --backend dlib mode)
 # Uncomment if you want to use the original dlib-based tracker
 # dlib>=19.24.0
-# imutils>=0.5.4
 
 # Development dependencies (optional)
 # pytest>=7.4.0

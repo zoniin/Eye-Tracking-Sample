@@ -32,7 +32,10 @@ env/
 *.swp
 *.swo
 *~
-.DS_Store
+
+# Backup files
+*_backup.py
+*.bak
 
 # Output files
 output/
@@ -68,5 +71,6 @@ temp/
 tmp/
 
 # OS specific
+.DS_Store
 Thumbs.db
 .Trash-*
