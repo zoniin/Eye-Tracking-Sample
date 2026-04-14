@@ -601,7 +601,8 @@ def run(predictor_path: str, source, enable_focus_tracking: bool = True):
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame_gray = cv2.equalizeHist(frame_gray)
 
-        faces = detector(frame_gray, 0)
+        # Use upsample=1 for better face detection (slower but more reliable)
+        faces = detector(frame_gray, 1)
         current_timestamp = time.time()
         face_detected = len(faces) > 0
 
