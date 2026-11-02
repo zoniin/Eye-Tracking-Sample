@@ -8,7 +8,10 @@ additional measures that the literature links to the target states:
 =====================  ==========================================  ==========================
 feature                meaning                                     relevant for
 =====================  ==========================================  ==========================
-perclos                % time eyes >= ~80 % closed (Wierwille)     fatigue
+perclos                % of valid observed time eyes >= ~80 %      fatigue
+                       closed (Wierwille); time-weighted, gaps
+                       excluded
+observed_s             tracked time in the window (gaps excluded)  data quality
 long_closure_count     closures > 500 ms                           fatigue / micro-sleep
 blink_dur_mean         mean blink duration                         fatigue
 yawn_count             sustained jaw opening (blendshape)          fatigue
@@ -36,7 +39,7 @@ from .sample import FrameSample
 
 BASE_FEATURES: List[str] = [
     # presence / tracking
-    "face_present_ratio", "track_loss_count",
+    "face_present_ratio", "track_loss_count", "observed_s",
     # fixations (Table 1)
     "fixation_count", "fixation_rate", "fixation_dur_mean", "fixation_dur_median",
     "fixation_dur_sd", "fixation_time_ratio", "long_fixation_ratio",
@@ -122,7 +125,8 @@ def compute_window_features(samples: List[FrameSample], fixations: Iterable[Fixa
                             t_start: float, t_end: float,
                             aoi_names: Sequence[str] = (),
                             long_fixation_s: float = 0.5,
-                            perclos_threshold: float = 0.7) -> Dict[str, float]:
+                            perclos_threshold: float = 0.7,
+                            max_gap_s: float = 0.25) -> Dict[str, float]:
     """Features over ``[t_start, t_end]``.  Events are clipped to the window."""
     win = [s for s in samples if t_start <= s.t <= t_end]
     # Only events that have *ended* by t_end: this is all the live pipeline can
@@ -140,7 +144,21 @@ def compute_window_features(samples: List[FrameSample], fixations: Iterable[Fixa
     face = np.array([s.face for s in win])
     feats["face_present_ratio"] = float(face.mean())
     feats["track_loss_count"] = float(np.sum(face[:-1] & ~face[1:])) if n > 1 else 0.0
-    present_min = max(feats["face_present_ratio"] * dur / 60.0, 1e-6)
+    # Valid observed time: intervals between consecutive face-present samples
+    # no further apart than ``max_gap_s`` (dropped frames / tracking loss are
+    # missing evidence, not "eyes open" or "eyes closed").  Each interval takes
+    # the eye state of its first sample.  Time-weighting makes PERCLOS and the
+    # per-minute rates independent of frame rate (approach from the v2 branch's
+    # temporal_eyes.TemporalEyes).
+    observed = closed_time = 0.0
+    for a, b in zip(win[:-1], win[1:]):
+        dt = b.t - a.t
+        if a.face and b.face and 0 < dt <= max_gap_s:
+            observed += dt
+            if np.isfinite(a.closure) and a.closure >= perclos_threshold:
+                closed_time += dt
+    feats["observed_s"] = observed
+    present_min = max(observed / 60.0, 1e-6)
 
     # --- fixations -------------------------------------------------------
     durs = np.array([min(f.end, t_end) - max(f.start, t_start) for f in fix])
@@ -167,9 +185,7 @@ def compute_window_features(samples: List[FrameSample], fixations: Iterable[Fixa
     feats["blink_rate"] = len(normal) / present_min
     feats["blink_dur_mean"] = _nanmean(b.duration * 1000.0 for b in normal)
     feats["long_closure_count"] = float(sum(b.kind == "long_closure" for b in bl))
-    closure = np.array([s.closure for s in win if s.face], dtype=float)
-    closure = closure[np.isfinite(closure)]
-    feats["perclos"] = float(np.mean(closure >= perclos_threshold)) if closure.size else math.nan
+    feats["perclos"] = closed_time / observed if observed > 0 else math.nan
 
     # --- gaze spread / screen ---------------------------------------------
     gx = np.array([s.gaze_x_deg for s in win if s.has_gaze])

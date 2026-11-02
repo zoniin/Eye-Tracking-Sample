@@ -76,6 +76,7 @@ class EventConfig:
     min_blink_ms: float = 50.0
     long_closure_ms: float = 500.0
     max_closure_ms: float = 3000.0     # longer = eyes closed / looking down, not a blink
+    max_blink_gap_ms: float = 250.0    # a frame gap this long mid-blink makes it unmeasurable
 
 
 class FixationDetector:
@@ -177,6 +178,13 @@ class BlinkDetector:
             self._closed_since = None
             self._last_t = None
             return None
+        if self._last_t is not None:
+            dt_ms = (s.t - self._last_t) * 1000.0
+            if dt_ms <= 0 or dt_ms > self.cfg.max_blink_gap_ms:
+                # Dropped frames / time going backwards: the closure duration is
+                # unknown, so do not report it (from temporal_eyes.TemporalEyes).
+                self._closed_since = None
+                self._last_t = None
         if self._closed_since is None:
             if s.closure >= self.cfg.blink_close:
                 self._closed_since = self._last_t if self._last_t is not None else s.t

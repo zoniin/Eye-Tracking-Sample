@@ -33,6 +33,10 @@ class FrameSample:
     eye_squint: float = NAN
     eye_wide: float = NAN
     jaw_open: float = NAN
+    iris_right_h: float = NAN        # raw iris offsets (landmarks.iris_offset), kept for
+    iris_right_v: float = NAN        # offline re-calibration / model training
+    iris_left_h: float = NAN
+    iris_left_v: float = NAN
 
     @property
     def has_gaze(self) -> bool:

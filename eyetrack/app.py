@@ -230,6 +230,9 @@ def cmd_live(args) -> None:
     writer = None if args.no_log else SessionWriter(args.out, args.participant)
     pipe = _build_pipeline(args, cfg, raw, writer)
     src = int(args.source) if str(args.source).isdigit() else args.source
+    # Recorded files are timed by frame index / FPS so processing speed does not
+    # change blink durations or rates; cameras use the wall clock.
+    is_file = isinstance(src, str) and Path(src).is_file()
     cap = cv2.VideoCapture(src)
     if not cap.isOpened():
         raise SystemExit(f"Cannot open video source {args.source}")
@@ -251,6 +254,8 @@ def cmd_live(args) -> None:
     show_mesh = False
     t_start = time.monotonic()
     last = t_start
+    frame_idx = 0
+    file_fps = (cap.get(cv2.CAP_PROP_FPS) or 30.0) if is_file else None
     fps = 0.0
     print("Running. Q = quit, C = calibrate, P = probe now.")
     try:
@@ -259,7 +264,8 @@ def cmd_live(args) -> None:
             if not ok:
                 break
             now = time.monotonic()
-            t = now - t_start
+            t = frame_idx / file_fps if is_file else now - t_start
+            frame_idx += 1
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - last, 1e-3))
             last = now
             res = pipe.process_frame(frame, t)

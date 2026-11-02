@@ -108,6 +108,8 @@ class EyeTrackingPipeline:
         obs = self.tracker.process(frame_bgr, t)
         if obs is None:
             self.head_pose.reset()
+            self._gaze_filter.reset()       # don't smooth across a tracking loss
+            self._screen_filter.reset()
             if hasattr(self.gaze_estimator, "reset"):
                 self.gaze_estimator.reset()
             return FrameSample(t=t, face=False), None, None, None, None
@@ -126,6 +128,8 @@ class EyeTrackingPipeline:
             eye_squint=0.5 * (bs.get("eyeSquintLeft", NAN) + bs.get("eyeSquintRight", NAN)),
             eye_wide=0.5 * (bs.get("eyeWideLeft", NAN) + bs.get("eyeWideRight", NAN)),
             jaw_open=bs.get("jawOpen", NAN),
+            iris_right_h=eyes.iris_right[0], iris_right_v=eyes.iris_right[1],
+            iris_left_h=eyes.iris_left[0], iris_left_v=eyes.iris_left[1],
         )
         self._fill_gaze(s, gaze)
         return s, obs, pose, eyes, gaze

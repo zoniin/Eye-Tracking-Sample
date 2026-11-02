@@ -232,6 +232,15 @@ class TestEvents:
         assert len(es.fixations) == 1 and es.saccades == []
         assert es.fixations[0].duration == pytest.approx(1.0, abs=0.15)
 
+    def test_blink_spanning_frame_gap_is_discarded(self):
+        samples = gaze_stream([(0, 0, 0.5)])
+        t = samples[-1].t
+        samples.append(FrameSample(t=t + 0.03, face=True, closure=1.0, gaze_x_deg=0, gaze_y_deg=0))
+        # frames drop for 0.6 s while the eyes are closed, then reopen
+        samples += gaze_stream([(0, 0, 0.5)], t0=t + 0.63)
+        es = detect_events(samples, EventConfig())
+        assert es.blinks == []
+
     def test_blink_after_face_loss_is_timed_correctly(self):
         samples = gaze_stream([(0, 0, 0.5)])
         t = samples[-1].t
@@ -263,6 +272,29 @@ class TestFeatures:
         assert f["blink_count"] == 3
         assert f["blink_rate"] == pytest.approx(3 / (samples[-1].t / 60), rel=0.05)
         assert f["face_present_ratio"] == 1.0
+
+    @pytest.mark.parametrize("fps", [15, 30, 60])
+    def test_frame_rate_independence(self, fps):
+        # 10 s, eyes closed 0.2 s every 2 s -> 5 blinks, 10 % closed time
+        samples = [FrameSample(t=i / fps, face=True, gaze_x_deg=0.0, gaze_y_deg=0.0,
+                               closure=1.0 if 1.0 <= (i / fps) % 2.0 < 1.2 else 0.0)
+                   for i in range(10 * fps)]
+        es = detect_events(samples)
+        f = compute_window_features(samples, es.fixations, es.saccades, es.blinks, 0.0, 10.0)
+        assert f["blink_count"] == 5
+        assert f["perclos"] == pytest.approx(0.1, abs=0.02)
+        assert f["blink_rate"] == pytest.approx(5 / (f["observed_s"] / 60), rel=1e-6)
+        assert f["blink_dur_mean"] == pytest.approx(200, abs=1000 / fps + 1)
+
+    def test_gaps_are_missing_evidence(self):
+        a = gaze_stream([(0, 0, 2.0)])
+        b = gaze_stream([(0, 0, 2.0)], t0=5.0)            # 3 s with no samples at all
+        lost = [FrameSample(t=2.0 + k / 30, face=False) for k in range(1, 30)]
+        samples = a + lost + b
+        es = detect_events(samples)
+        f = compute_window_features(samples, es.fixations, es.saccades, es.blinks, 0.0, 7.0)
+        assert f["observed_s"] == pytest.approx(4.0, abs=0.1)
+        assert f["perclos"] == 0.0
 
     def test_transition_entropy_extremes(self):
         assert transition_entropy(["a", "b"] * 20) == pytest.approx(0.0)
@@ -446,6 +478,7 @@ def test_frames_csv_roundtrip(tmp_path):
     back = read_frames_csv(p)
     assert len(back) == len(samples)
     assert back[10].aoi == samples[10].aoi
+    assert "iris_right_h" in open(p).readline()
     assert back[10].gaze_x_deg == pytest.approx(samples[10].gaze_x_deg, nan_ok=True)
 
 
