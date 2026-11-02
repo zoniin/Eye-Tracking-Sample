@@ -995,6 +995,40 @@ def draw_help_overlay(frame: np.ndarray) -> None:
         y_pos += 20
 
 
+class _TasksFaceMesh:
+    """Legacy ``FaceMesh.process()`` interface on top of the MediaPipe Tasks
+    FaceLandmarker (uses ``face_landmarker.task`` from the repository)."""
+
+    def __init__(self, model_path: str = "face_landmarker.task"):
+        from types import SimpleNamespace
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision
+
+        path = Path(model_path)
+        if not path.is_file():
+            path = Path(__file__).resolve().parent / model_path
+        options = vision.FaceLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=str(path)),
+            running_mode=vision.RunningMode.VIDEO,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self._ns = SimpleNamespace
+        self._landmarker = vision.FaceLandmarker.create_from_options(options)
+        self._t0 = time.monotonic()
+        self._last_ms = -1
+
+    def process(self, rgb_frame: np.ndarray):
+        ts = max(int((time.monotonic() - self._t0) * 1000), self._last_ms + 1)
+        self._last_ms = ts
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb_frame))
+        result = self._landmarker.detect_for_video(image, ts)
+        faces = [self._ns(landmark=lms) for lms in result.face_landmarks] or None
+        return self._ns(multi_face_landmarks=faces)
+
+
 # ---------------------------------------------------------------------------
 # Main Eye Tracker Class
 # ---------------------------------------------------------------------------
@@ -1006,14 +1040,18 @@ class EyeTrackerV2:
         self.config = config
         self.logger = setup_logging(config.log_level, config.log_file)
 
-        # Initialize MediaPipe
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+        # Initialize MediaPipe.  ``mp.solutions`` was removed from recent
+        # MediaPipe releases; fall back to the Tasks API in that case.
+        if hasattr(mp, "solutions"):
+            self.mp_face_mesh = mp.solutions.face_mesh
+            self.face_mesh = self.mp_face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+        else:
+            self.face_mesh = _TasksFaceMesh()
 
         # Components
         self.focus_analyzer = FocusAnalyzer(config.focus, self.logger)

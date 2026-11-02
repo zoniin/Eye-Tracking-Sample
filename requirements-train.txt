@@ -1,0 +1,8 @@
+# Extra dependencies for training/ (gaze CNNs and behaviour classifier)
+-r requirements.txt
+torch>=2.1
+torchvision>=0.16
+onnx>=1.15
+scipy>=1.10        # MPIIGaze .mat files
+h5py>=3.9          # EVE labels
+pandas>=2.0        # behaviour dataset

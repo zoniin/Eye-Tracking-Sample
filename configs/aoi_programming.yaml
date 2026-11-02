@@ -1,0 +1,9 @@
+# Example AOI layout for a programming task (normalised screen coordinates,
+# origin = top-left of the screen, x/y/w/h in 0..1).  Adjust to the layout of
+# the IDE / web page the students use.
+margin: 0.05
+aois:
+  - {name: instructions, x: 0.00, y: 0.05, w: 0.28, h: 0.95}
+  - {name: code,         x: 0.28, y: 0.05, w: 0.72, h: 0.60}
+  - {name: output,       x: 0.28, y: 0.65, w: 0.47, h: 0.35}   # compiler / run output
+  - {name: feedback,     x: 0.75, y: 0.65, w: 0.25, h: 0.35}   # tests / hints

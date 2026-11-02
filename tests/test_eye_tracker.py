@@ -47,7 +47,7 @@ class TestEyeAspectRatio:
         ], dtype=np.float32)
 
         ear = eye_aspect_ratio(eye_pts)
-        assert 0.2 < ear < 0.4  # Typical range for open eye
+        assert 0.2 < ear <= 0.41  # Typical range for open eye (this fixture is exactly 0.4)
 
     def test_closed_eye(self):
         """Test EAR for closed eye."""
