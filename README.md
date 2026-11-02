@@ -4,6 +4,25 @@ A real-time eye tracking program with **two powerful versions**:
 
 ## 🚀 Choose Your Version
 
+### **Version 3 (V3)** - Behaviour-Classification Pipeline (SIGCSE poster pipeline)
+**Recommended for:** research studies, real-time learner-state detection
+
+- 🎯 Screen calibration → gaze on screen and **areas of interest** (code, instructions, output, …)
+- 👁️ **Fixations (I-DT), saccades, blinks**, PERCLOS, AOI switching, head motion, facial cues
+- 🧠 **Behaviour states**: engaged / distracted / fatigued / confused / away (explainable rules or trained model)
+- 📝 **Thought probes** (self-reports) → labelled dataset → leave-one-participant-out training
+- 🧪 Gaze CNNs from the **Model_MPIIGaze** and **Model_EVE** work (ResNet-8, EyeNet-GRU) with MPIIGaze-style eye normalisation and ONNX inference
+
+**[👉 See V3 Documentation (README_V3.md)](README_V3.md)**
+
+**Quick start V3:**
+```bash
+pip install -r requirements.txt
+python -m eyetrack live --participant P01 --calibrate --aoi configs/aoi_programming.yaml --probes
+```
+
+---
+
 ### **Version 2 (V2)** - Advanced System with Full Features
 **Recommended for:** Research, productivity tracking, data analysis, advanced use cases
 

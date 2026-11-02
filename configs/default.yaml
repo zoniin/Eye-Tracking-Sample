@@ -1,0 +1,34 @@
+# Eye Tracker V3 configuration (python -m eyetrack live --config configs/default.yaml)
+# Every key is optional; omitted keys keep the defaults shown here.
+
+pipeline:
+  window_s: 30.0              # feature window (Table 1 metrics are computed over this)
+  update_interval_s: 1.0      # how often features / behaviour state are recomputed
+  screen_width_cm: 34.0       # physical screen size -> gaze in visual degrees
+  screen_height_cm: 19.0
+  default_distance_cm: 60.0
+  alert_after_s: 60.0         # educator alert once a non-engaged state lasts this long
+  state_tau_s: 4.0            # smoothing of class probabilities
+  state_min_dwell_s: 3.0      # hysteresis before the displayed state changes
+  camera_focal_scale: 1.0     # focal length = width * scale (uncalibrated webcam guess)
+  events:
+    dispersion_deg: 2.5       # I-DT dispersion threshold (Salvucci & Goldberg 2000)
+    min_fixation_ms: 100
+    median_window: 5          # samples; pre-filter for noisy webcam gaze
+    max_gap_ms: 150
+    blink_close: 0.5          # eye closure (0..1) hysteresis thresholds
+    blink_open: 0.35
+    long_closure_ms: 500
+
+# Thought probes (self-reports used as training labels), enabled with --probes
+probes:
+  min_interval_s: 90
+  max_interval_s: 180
+  timeout_s: 20
+
+# Optional tweaks of the rule-based classifier thresholds, e.g.
+# behavior_rules:
+#   fatigued:
+#     perclos: {lo: 0.10, hi: 0.25}
+#   confused:
+#     brow_down_mean: {weight: 0.5}
