@@ -272,7 +272,6 @@ class TestFeatures:
 class TestCalibration:
     def _data(self, noise=0.002, seed=0):
         rng = np.random.default_rng(seed)
-        A = rng.normal(size=(8, 2))
         feats, targets, groups = [], [], []
         for gi, (x, y) in enumerate(grid_points(9)):
             for _ in range(25):
@@ -474,7 +473,7 @@ class TestGazeNets:
         assert torch.allclose(seq, torch.cat(steps, dim=1), atol=1e-5)
 
     def test_onnx_export_and_appearance_estimator(self, tmp_path):
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
         pytest.importorskip("onnxruntime")
         pytest.importorskip("onnx")
         sys.path.insert(0, str(ROOT / "training"))

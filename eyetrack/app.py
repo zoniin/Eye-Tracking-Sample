@@ -15,7 +15,6 @@ import argparse
 import csv
 import json
 import math
-import sys
 import time
 from dataclasses import fields, is_dataclass
 from pathlib import Path
@@ -24,7 +23,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 
 from .aoi import OFF_SCREEN, AOILayout
-from .behavior import STATE_DESCRIPTIONS, load_classifier
+from .behavior import load_classifier
 from .calibration import CalibrationSession, ScreenCalibration
 from .events import EventConfig, detect_events
 from .features import feature_names, windows_from_session
@@ -164,7 +163,6 @@ def draw_overlay(frame, res, pipe: EyeTrackingPipeline, fps: float, show_mesh: b
 
 
 def draw_probe(canvas_size, options) -> np.ndarray:
-    import cv2
     w, h = canvas_size
     img = np.full((h, w, 3), 30, np.uint8)
     _text(img, PROMPT, (30, 50), 0.7, (255, 255, 255), 2)
@@ -404,7 +402,6 @@ def cmd_features(args) -> None:
 
 def cmd_simulate(args) -> None:
     """Synthetic sessions with probe labels (for trying the training workflow)."""
-    from .events import EventConfig as _EC  # noqa: F401
     from .probes import ProbeResponse
     from .simulate import SIM_STATES, default_layout, simulate_session
     rng = np.random.default_rng(args.seed)
