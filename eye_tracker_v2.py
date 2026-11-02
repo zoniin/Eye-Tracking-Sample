@@ -34,7 +34,8 @@ import logging
 import cv2
 import numpy as np
 import mediapipe as mp
-import yaml
+from temporal_eyes import TemporalEyes, PositionSmoother
+from types import SimpleNamespace
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +83,9 @@ class GazeConfig:
 class BlinkConfig:
     """Blink detection configuration."""
     ear_threshold: float = 0.21
-    consecutive_frames: int = 2
+    consecutive_frames: int = 2  # Legacy configuration; detection now uses elapsed time.
+    min_duration_seconds: float = 0.06
+    max_duration_seconds: float = 0.8
     normal_rate_min: int = 15
     normal_rate_max: int = 30
 
@@ -144,6 +147,7 @@ class AppConfig:
     @classmethod
     def from_yaml(cls, path: str) -> 'AppConfig':
         """Load configuration from YAML file."""
+        import yaml
         with open(path, 'r') as f:
             data = yaml.safe_load(f)
 
@@ -175,6 +179,7 @@ class AppConfig:
             'export_path': self.export_path
         }
 
+        import yaml
         with open(path, 'w') as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
@@ -218,6 +223,15 @@ class FrameData:
     blink_count: int
     head_pose: HeadPose
     fps: float = 0.0
+    ear: Optional[float] = None
+    closure_seconds: float = 0.0
+    blink_duration_seconds: Optional[float] = None
+    closed_time_ratio: Optional[float] = None
+    observed_seconds: float = 0.0
+    left_iris_x: Optional[float] = None
+    left_iris_y: Optional[float] = None
+    right_iris_x: Optional[float] = None
+    right_iris_y: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +651,9 @@ class DataExporter:
                 writer.writerow([
                     'timestamp', 'gaze', 'blink_occurred', 'face_detected',
                     'focus_score', 'focus_state', 'blink_count', 'fps',
-                    'head_pitch', 'head_yaw', 'head_roll'
+                    'head_pitch', 'head_yaw', 'head_roll',
+                    'ear', 'closure_seconds', 'blink_duration_seconds', 'closed_time_ratio',
+                    'observed_seconds', 'left_iris_x', 'left_iris_y', 'right_iris_x', 'right_iris_y'
                 ])
 
                 # Data rows
@@ -653,7 +669,10 @@ class DataExporter:
                         data.fps,
                         data.head_pose.pitch,
                         data.head_pose.yaw,
-                        data.head_pose.roll
+                        data.head_pose.roll,
+                        data.ear, data.closure_seconds, data.blink_duration_seconds,
+                        data.closed_time_ratio, data.observed_seconds,
+                        data.left_iris_x, data.left_iris_y, data.right_iris_x, data.right_iris_y
                     ])
 
             self.logger.info(f"Data exported to {self.export_path}")
@@ -1007,13 +1026,28 @@ class EyeTrackerV2:
         self.logger = setup_logging(config.log_level, config.log_file)
 
         # Initialize MediaPipe
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+        self.use_tasks = not hasattr(mp, "solutions")
+        if self.use_tasks:
+            from mediapipe.tasks import python
+            from mediapipe.tasks.python import vision
+            model_path = Path(__file__).with_name("face_landmarker.task")
+            if not model_path.is_file():
+                raise FileNotFoundError(f"Face landmark model missing: {model_path}")
+            options = vision.FaceLandmarkerOptions(
+                base_options=python.BaseOptions(model_asset_path=str(model_path)),
+                running_mode=vision.RunningMode.VIDEO, num_faces=1)
+            self.face_mesh = vision.FaceLandmarker.create_from_options(options)
+            self.landmark_timestamp_ms = -1
+        else:
+            self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+                max_num_faces=1, refine_landmarks=True,
+                min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        self.temporal_eyes = TemporalEyes(
+            threshold=config.blink.ear_threshold, window=config.focus.window_size,
+            min_blink=config.blink.min_duration_seconds,
+            max_blink=config.blink.max_duration_seconds)
+        self.iris_smoother = PositionSmoother(config.gaze.smoothing_window)
+        self.eye_observation = None
 
         # Components
         self.focus_analyzer = FocusAnalyzer(config.focus, self.logger)
@@ -1074,7 +1108,7 @@ class EyeTrackerV2:
             landmarks.append([landmark.x * w, landmark.y * h, landmark.z * w])
         return np.array(landmarks, dtype=np.float32)
 
-    def _process_frame(self, frame: np.ndarray) -> Tuple[str, bool, HeadPose, Optional[Tuple[float, float]], Optional[Tuple[float, float]]]:
+    def _process_frame(self, frame: np.ndarray, timestamp: Optional[float] = None) -> Tuple[str, bool, HeadPose, Optional[Tuple[float, float]], Optional[Tuple[float, float]]]:
         """
         Process single frame for eye tracking.
 
@@ -1083,7 +1117,16 @@ class EyeTrackerV2:
         """
         # Convert to RGB for MediaPipe
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.face_mesh.process(rgb_frame)
+        timestamp = time.monotonic() if timestamp is None else timestamp
+        if self.use_tasks:
+            self.landmark_timestamp_ms = max(self.landmark_timestamp_ms + 1, int(timestamp * 1000))
+            detected = self.face_mesh.detect_for_video(
+                mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame),
+                self.landmark_timestamp_ms)
+            results = SimpleNamespace(multi_face_landmarks=[
+                SimpleNamespace(landmark=points) for points in detected.face_landmarks])
+        else:
+            results = self.face_mesh.process(rgb_frame)
 
         gaze = "no face"
         blink_occurred = False
@@ -1111,20 +1154,22 @@ class EyeTrackerV2:
             right_ear = eye_aspect_ratio(right_eye[:, :2])
             avg_ear = (left_ear + right_ear) / 2.0
 
-            if avg_ear < self.config.blink.ear_threshold:
-                self.blink_frame_counter += 1
-            else:
-                if self.blink_frame_counter >= self.config.blink.consecutive_frames:
-                    self.blink_count += 1
-                    blink_occurred = True
-                self.blink_frame_counter = 0
+            self.eye_observation = self.temporal_eyes.update(timestamp, float(avg_ear))
+            blink_occurred = self.eye_observation.blink
+            if blink_occurred:
+                self.blink_count += 1
 
             # Get iris positions
             left_pos = get_iris_position(left_iris[:, :2], left_eye[:, :2])
             right_pos = get_iris_position(right_iris[:, :2], right_eye[:, :2])
 
-            # Classify gaze
-            gaze = classify_gaze(left_pos, right_pos, self.config.gaze)
+            # Never infer gaze through closed eyelids; keep raw positions for export/calibration.
+            if avg_ear < self.config.blink.ear_threshold:
+                self.iris_smoother.reset()
+                gaze = "undetected"
+            else:
+                smooth_left, smooth_right = self.iris_smoother.update(left_pos, right_pos)
+                gaze = classify_gaze(smooth_left, smooth_right, self.config.gaze)
 
             # Estimate head pose
             face_landmarks = self._get_landmarks(results, list(range(468)), (h, w))
@@ -1154,6 +1199,9 @@ class EyeTrackerV2:
                 nose_pos = (int(nose_landmark.x * w), int(nose_landmark.y * h - 40))
                 draw_gaze_arrow(frame, gaze, nose_pos)
 
+        else:
+            self.eye_observation = self.temporal_eyes.update(timestamp, None)
+            self.iris_smoother.reset()
         return gaze, blink_occurred, head_pose, left_pos, right_pos
 
     def _handle_keyboard(self, key: int) -> bool:
@@ -1170,6 +1218,8 @@ class EyeTrackerV2:
             self.focus_analyzer = FocusAnalyzer(self.config.focus, self.logger)
             self.focus_analyzer.start_session()
             self.blink_count = 0
+            self.temporal_eyes.reset()
+            self.iris_smoother.reset()
         elif key == ord('s'):
             if self.data_exporter:
                 self.data_exporter.export_csv()
@@ -1179,6 +1229,8 @@ class EyeTrackerV2:
         elif key == ord('h'):
             self.show_help = not self.show_help
         elif key == ord('p'):
+            self.temporal_eyes.reset()
+            self.iris_smoother.reset()
             self.paused = not self.paused
             self.logger.info(f"{'Paused' if self.paused else 'Resumed'}")
         elif key == ord(' ') and self.calibration_manager.is_active:
@@ -1204,6 +1256,8 @@ class EyeTrackerV2:
         self.focus_analyzer.start_session()
         self.logger.info("Eye tracker running. Press 'H' for help, 'Q' to quit.")
 
+        source_frame = 0
+        source_fps = cap.get(cv2.CAP_PROP_FPS) or self.config.camera.fps
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -1218,7 +1272,9 @@ class EyeTrackerV2:
 
             if not self.paused:
                 # Process frame
-                gaze, blink_occurred, head_pose, left_pos, right_pos = self._process_frame(frame)
+                observation_time = (source_frame / source_fps if isinstance(source, str)
+                                    else time.monotonic())
+                gaze, blink_occurred, head_pose, left_pos, right_pos = self._process_frame(frame, observation_time)
 
                 face_detected = gaze != "no face"
 
@@ -1237,7 +1293,16 @@ class EyeTrackerV2:
                         focus_state=metrics.state,
                         blink_count=self.blink_count,
                         head_pose=head_pose,
-                        fps=avg_fps
+                        fps=avg_fps,
+                        ear=self.eye_observation.ear,
+                        closure_seconds=self.eye_observation.closure_seconds,
+                        blink_duration_seconds=self.eye_observation.blink_duration_seconds,
+                        closed_time_ratio=self.eye_observation.closed_time_ratio,
+                        observed_seconds=self.eye_observation.observed_seconds,
+                        left_iris_x=left_pos[0] if left_pos else None,
+                        left_iris_y=left_pos[1] if left_pos else None,
+                        right_iris_x=right_pos[0] if right_pos else None,
+                        right_iris_y=right_pos[1] if right_pos else None
                     )
                     self.data_exporter.add_frame(frame_data)
 
@@ -1260,6 +1325,7 @@ class EyeTrackerV2:
                 cv2.putText(frame, "PAUSED (Press P to resume)", (w//2 - 200, h//2),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 3)
 
+            source_frame += 1
             # Draw help
             if self.show_help:
                 draw_help_overlay(frame)
@@ -1283,6 +1349,7 @@ class EyeTrackerV2:
 
         # Cleanup
         cap.release()
+        self.face_mesh.close()
         if self.video_writer:
             self.video_writer.release()
         cv2.destroyAllWindows()
