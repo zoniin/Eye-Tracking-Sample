@@ -25,7 +25,7 @@ import numpy as np
 from .aoi import OFF_SCREEN, AOILayout
 from .behavior import load_classifier
 from .calibration import CalibrationSession, ScreenCalibration
-from .events import EventConfig, detect_events
+from .events import detect_events
 from .features import feature_names, windows_from_session
 from .pipeline import EyeTrackingPipeline, PipelineConfig
 from .probes import PROMPT, ProbeScheduler
@@ -181,6 +181,13 @@ def _build_pipeline(args, cfg: PipelineConfig, raw_cfg: Dict, writer=None, track
     layout = AOILayout.from_yaml(args.aoi) if args.aoi else AOILayout()
     calib = ScreenCalibration.load(args.calibration) if getattr(args, "calibration", None) else None
     classifier = load_classifier(args.behavior_model, raw_cfg.get("behavior_rules"))
+    learned_window = getattr(classifier, "window_s", None)
+    if learned_window and not getattr(args, "window", None):
+        # features must be computed over the same window the model was trained on
+        cfg.window_s = float(learned_window)
+    elif learned_window and abs(learned_window - cfg.window_s) > 1e-6:
+        print(f"WARNING: behaviour model was trained on {learned_window:.0f}s windows "
+              f"but --window is {cfg.window_s:.0f}s")
     tracker = FaceLandmarkTracker(mode=tracker_mode)
     pipe = EyeTrackingPipeline(cfg, tracker=tracker, calibration=calib, aoi_layout=layout,
                                classifier=classifier, writer=writer)
@@ -193,6 +200,18 @@ def _maybe_gaze_model(pipe: EyeTrackingPipeline, args, w: int, h: int) -> None:
         from .geometry import default_camera_matrix
         pipe.camera_matrix = default_camera_matrix(w, h, pipe.cfg.camera_focal_scale)
         pipe.gaze_estimator = AppearanceGazeEstimator(args.gaze_model, pipe.camera_matrix)
+    _check_calibration(pipe)
+
+
+def _check_calibration(pipe: EyeTrackingPipeline) -> None:
+    """Drop a loaded calibration that was made with a different gaze estimator."""
+    if pipe.calibration is None:
+        return
+    source = pipe.gaze_estimator.source if pipe.gaze_estimator else "geometric"
+    if pipe.calibration.source != source:
+        print(f"WARNING: calibration was made with '{pipe.calibration.source}' but the "
+              f"gaze estimator is '{source}' - ignoring it; press C to recalibrate.")
+        pipe.calibration = None
 
 
 def _session_meta(args, pipe: EyeTrackingPipeline) -> Dict:
@@ -223,8 +242,9 @@ def cmd_live(args) -> None:
     if writer:
         writer.write_meta(**_session_meta(args, pipe))
     probe_cfg = raw.get("probes", {})
-    probes = (ProbeScheduler(**{k: v for k, v in probe_cfg.items() if k != "options"})
-              if args.probes else None)
+    if "options" in probe_cfg:   # e.g. [["1", "engaged"], ["2", "distracted"], ...]
+        probe_cfg = {**probe_cfg, "options": [tuple(map(str, o)) for o in probe_cfg["options"]]}
+    probes = ProbeScheduler(**probe_cfg) if args.probes else None
     screen = tuple(args.screen) if args.screen else screen_resolution()
     alert_log = open(args.alerts_jsonl, "a") if args.alerts_jsonl else None
     calib: Optional[CalibrationSession] = CalibrationSession(args.calib_points) if args.calibrate else None
@@ -379,8 +399,9 @@ def cmd_features(args) -> None:
     d = Path(args.session)
     meta = json.loads((d / "meta.json").read_text()) if (d / "meta.json").is_file() else {}
     aoi_names = meta.get("aoi_names", [])
+    cfg, _ = load_config(args.config)
     samples = read_frames_csv(d / "frames.csv")
-    stream = detect_events(samples, EventConfig())
+    stream = detect_events(samples, cfg.events)
     rows = windows_from_session(samples, stream, args.window, args.hop, aoi_names)
     clf = load_classifier(args.behavior_model)
     for r in rows:
@@ -472,6 +493,7 @@ def main(argv=None) -> None:
     fe.add_argument("--hop", type=float, default=5.0)
     fe.add_argument("--behavior-model")
     fe.add_argument("--output", default="windows_offline.csv")
+    fe.add_argument("--config", help="YAML config (event thresholds)")
     fe.set_defaults(func=cmd_features)
 
     si = sub.add_parser("simulate", help="write SYNTHETIC labelled sessions for testing training")

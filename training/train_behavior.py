@@ -20,8 +20,10 @@ self-reports").
 
        python -m eyetrack live --behavior-model models/behavior.joblib
 
-``--participant-normalize`` z-scores each feature within participant, which
-removes stable individual differences (e.g. someone who always blinks a lot).
+``--participant-normalize`` z-scores each feature against the session's own
+baseline (all sliding windows, labelled or not), which removes stable
+individual differences (e.g. someone who always blinks a lot) without leaking
+label information.
 """
 
 from __future__ import annotations
@@ -42,18 +44,25 @@ from eyetrack.behavior import RuleBasedClassifier  # noqa: E402
 from eyetrack.dataset import build_examples, write_dataset  # noqa: E402
 from eyetrack.features import BASE_FEATURES  # noqa: E402
 
-META_COLS = {"participant", "session", "t", "label"}
+META_COLS = {"participant", "session", "t", "label", "window_s"}
 
 
 def cmd_build(args) -> None:
     rows: List[Dict] = []
+    stats: Dict = {}
     dirs = [d for pat in args.sessions for d in sorted(glob.glob(pat)) if Path(d).is_dir()]
+    event_cfg = None
+    if args.config:
+        from eyetrack.app import load_config
+        event_cfg = load_config(args.config)[0].events
     for d in dirs:
         ex = build_examples(d, window_s=args.window, label_source=args.labels,
-                            min_presence=args.min_presence)
+                            min_presence=args.min_presence, event_cfg=event_cfg,
+                            stats_out=stats)
         print(f"{d}: {len(ex)} labelled windows")
         rows.extend(ex)
     write_dataset(rows, args.out)
+    Path(args.out).with_suffix(".stats.json").write_text(json.dumps(stats))
     labels = {}
     for r in rows:
         labels[r["label"]] = labels.get(r["label"], 0) + 1
@@ -79,12 +88,19 @@ def make_pipeline(kind: str, seed: int):
                                              random_state=seed))
 
 
-def participant_zscore(df, cols):
+def session_zscore(df, cols, stats: Dict):
+    """Normalise each row by its session's baseline statistics.
+
+    The statistics come from *all* sliding windows of the session (written by
+    ``build``), not from the labelled rows, so they do not depend on labels -
+    the same information is available live (running statistics)."""
     out = df.copy()
-    for _, idx in df.groupby("participant").groups.items():
-        block = df.loc[idx, cols].astype(float)
-        sd = block.std().replace(0, 1.0).fillna(1.0)
-        out.loc[idx, cols] = (block - block.mean()) / sd
+    for sess, idx in df.groupby("session").groups.items():
+        st = stats.get(str(sess), {})
+        for c in cols:
+            mu, sd = st.get(c, [np.nan, 1.0])
+            sd = sd if sd and sd > 1e-6 else 1.0
+            out.loc[idx, c] = (df.loc[idx, c].astype(float) - mu) / sd
     return out
 
 
@@ -109,7 +125,14 @@ def cmd_train(args) -> None:
     feat_cols = [c for c in df.columns if c not in META_COLS]
     if args.features == "base":
         feat_cols = [c for c in feat_cols if c in BASE_FEATURES]
-    X_df = participant_zscore(df, feat_cols) if args.participant_normalize else df
+    window_s = float(df["window_s"].iloc[0]) if "window_s" in df.columns else args.window
+    if args.participant_normalize:
+        stats_path = Path(args.dataset).with_suffix(".stats.json")
+        if not stats_path.is_file():
+            raise SystemExit(f"{stats_path} not found - rebuild the dataset with `build`.")
+        X_df = session_zscore(df, feat_cols, json.loads(stats_path.read_text()))
+    else:
+        X_df = df
     X = X_df[feat_cols].astype(float).to_numpy()
     y = df["label"].astype(str).to_numpy()
     groups = df["participant"].astype(str).to_numpy()
@@ -188,7 +211,7 @@ def cmd_train(args) -> None:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"pipeline": final, "feature_names": feat_cols, "labels": labels,
-                 "window_s": args.window, "participant_normalized": bool(args.participant_normalize),
+                 "window_s": window_s, "participant_normalized": bool(args.participant_normalize),
                  "meta": report}, out)
     out.with_suffix(".report.json").write_text(json.dumps(report, indent=2))
     print(f"\nSaved {out} and {out.with_suffix('.report.json')}")
@@ -202,6 +225,7 @@ def main(argv=None):
     b.add_argument("--window", type=float, default=30.0)
     b.add_argument("--labels", default="probes", choices=["probes", "labels", "both"])
     b.add_argument("--min-presence", type=float, default=0.0)
+    b.add_argument("--config", help="YAML config with the event thresholds used live")
     b.add_argument("--out", default="data/behavior.csv")
     t = sub.add_parser("train", help="cross-validate and fit the classifier")
     t.add_argument("--dataset", required=True)
@@ -209,11 +233,13 @@ def main(argv=None):
                    help="auto = logistic regression below 300 windows, gradient boosting above")
     t.add_argument("--features", default="all", choices=["all", "base"],
                    help="'base' drops layout-specific dwell_<aoi> columns")
-    t.add_argument("--participant-normalize", action="store_true")
+    t.add_argument("--participant-normalize", action="store_true",
+                   help="z-score features against each session's own baseline")
     t.add_argument("--merge", nargs="*", help="relabel, e.g. frustrated:confused")
     t.add_argument("--drop-labels", nargs="*")
     t.add_argument("--min-count", type=int, default=5)
-    t.add_argument("--window", type=float, default=30.0, help="window used when building")
+    t.add_argument("--window", type=float, default=30.0,
+                   help="window length if the dataset has no window_s column")
     t.add_argument("--out", default="models/behavior.joblib")
     t.add_argument("--seed", type=int, default=0)
     args = p.parse_args(argv)

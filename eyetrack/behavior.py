@@ -136,8 +136,9 @@ class RuleBasedClassifier:
         if presence is None or not np.isfinite(presence) or presence < self.away_presence:
             probs = {s: 0.0 for s in STATES}
             probs["away"] = 1.0
+            ok = presence is not None and np.isfinite(presence)
             return BehaviorEstimate("away", probs, [f"face visible {presence * 100:.0f}% of the window"
-                                                    if presence == presence else "no face"])
+                                                    if ok else "no face"])
         scores, reasons = {}, {}
         for state, evs in self.rules.items():
             num = den = 0.0
@@ -176,15 +177,20 @@ class LearnedBehaviorClassifier:
         self.meta: Dict = bundle.get("meta", {})
         self.baseline = None
         self.normalize_participant = bool(bundle.get("participant_normalized", False))
+        self.warmup_windows = int(bundle.get("warmup_windows", 60))
         self._history: List[np.ndarray] = []
 
-    def _vector(self, feats: Dict[str, float]) -> np.ndarray:
+    def _vector(self, feats: Dict[str, float]) -> Optional[np.ndarray]:
         x = np.array([feats.get(n, math.nan) for n in self.feature_names], dtype=float)
         if self.normalize_participant:
-            # Running per-participant z-scoring, mirroring the training-time
-            # normalisation (individual differences in blink rate etc.).
+            # Running session-baseline z-scoring, mirroring training (session
+            # statistics over all windows).  Needs a warm-up before it is
+            # meaningful; until then no prediction is made.
             self._history.append(x)
-            hist = np.array(self._history[-600:])
+            self._history = self._history[-3600:]
+            if len(self._history) < self.warmup_windows:
+                return None
+            hist = np.array(self._history)
             with np.errstate(all="ignore"):
                 mu = np.nanmean(hist, axis=0)
                 sd = np.nanstd(hist, axis=0)
@@ -193,7 +199,13 @@ class LearnedBehaviorClassifier:
         return x
 
     def predict(self, feats: Dict[str, float]) -> BehaviorEstimate:
-        x = self._vector(feats)[None]
+        x = self._vector(feats)
+        if x is None:
+            n = len(self.labels)
+            return BehaviorEstimate("unknown", {c: 1.0 / n for c in self.labels},
+                                    [f"collecting baseline ({len(self._history)}/"
+                                     f"{self.warmup_windows} windows)"], self.source)
+        x = x[None]
         proba = self.pipeline.predict_proba(x)[0]
         classes = [str(c) for c in self.pipeline.classes_]
         probs = {c: float(p) for c, p in zip(classes, proba)}
@@ -213,6 +225,8 @@ class StateSmoother:
         self._candidate_since = 0.0
 
     def update(self, t: float, est: BehaviorEstimate) -> BehaviorEstimate:
+        if est.state == "unknown":        # classifier not ready: keep current state
+            return BehaviorEstimate(self.state, dict(self._p or est.probs), est.reasons, est.source)
         if self._p is None or self._t is None:
             self._p = dict(est.probs)
             self.state = est.state

@@ -223,6 +223,27 @@ class TestEvents:
         assert es.blinks[1].duration == pytest.approx(0.8, abs=0.04)
 
 
+    def test_blink_does_not_split_fixation(self):
+        samples = gaze_stream([(0, 0, 1.0)])
+        for j in range(12, 18):                 # 200 ms blink in the middle
+            samples[j].closure = 1.0
+        es = detect_events(samples, EventConfig())
+        assert len(es.blinks) == 1 and es.blinks[0].kind == "blink"
+        assert len(es.fixations) == 1 and es.saccades == []
+        assert es.fixations[0].duration == pytest.approx(1.0, abs=0.15)
+
+    def test_blink_after_face_loss_is_timed_correctly(self):
+        samples = gaze_stream([(0, 0, 0.5)])
+        t = samples[-1].t
+        samples += [FrameSample(t=t + k / 30, face=False) for k in range(1, 60)]   # 2 s lost
+        back = gaze_stream([(0, 0, 0.5)], t0=t + 2.0)
+        for j in range(3, 6):
+            back[j].closure = 1.0
+        es = detect_events(samples + back, EventConfig())
+        assert len(es.blinks) == 1
+        assert es.blinks[0].kind == "blink" and es.blinks[0].duration < 0.2
+
+
 # ---------------------------------------------------------------------------
 # features / AOIs
 # ---------------------------------------------------------------------------
@@ -370,6 +391,37 @@ class TestBehavior:
         assert am.update(31, "engaged") is None
 
 
+def test_closed_eyes_get_no_gaze_or_aoi():
+    from eyetrack.gaze import GazeResult
+    cal = ScreenCalibration(mean=np.zeros(2), scale=np.ones(2), coef=np.array([[0.5, 0.5], [1, 0], [0, 1.0]]),
+                            degree=1, alpha=1.0, loo_error=0.0)
+    pipe = EyeTrackingPipeline(PipelineConfig(), calibration=cal, aoi_layout=default_layout())
+    g = GazeResult(np.array([0.0, 0.0]), np.zeros(2), "geometric")
+    open_s = FrameSample(t=0.0, face=True, closure=0.0)
+    pipe._fill_gaze(open_s, g)
+    assert open_s.aoi == "code" and np.isfinite(open_s.screen_x)
+    closed = FrameSample(t=0.03, face=True, closure=0.9)
+    pipe._fill_gaze(closed, g)
+    assert closed.aoi == "" and math.isnan(closed.screen_x) and math.isnan(closed.gaze_x_deg)
+
+
+def test_mismatched_calibration_is_dropped(capsys):
+    from eyetrack.app import _check_calibration
+    from eyetrack.gaze import GeometricGazeEstimator
+    cal = ScreenCalibration(mean=np.zeros(2), scale=np.ones(2), coef=np.zeros((3, 2)),
+                            degree=1, alpha=1.0, loo_error=0.0, source="appearance:x.onnx")
+    pipe = EyeTrackingPipeline(PipelineConfig(), calibration=cal, gaze_estimator=GeometricGazeEstimator())
+    _check_calibration(pipe)
+    assert pipe.calibration is None and "WARNING" in capsys.readouterr().out
+
+
+def test_window_features_ignore_unfinished_events():
+    samples = gaze_stream([(0, 0, 2.0)])
+    es = detect_events(samples)
+    f = compute_window_features(samples, es.fixations, es.saccades, es.blinks, 0.0, 1.0)
+    assert f["fixation_count"] == 0        # the fixation only ends at t=2 s
+
+
 def test_probe_scheduler():
     ps = ProbeScheduler(min_interval_s=10, max_interval_s=10, timeout_s=5, seed=0)
     ps.update(0.0)
@@ -489,7 +541,7 @@ class TestGazeNets:
         pose = geo.HeadPoseEstimator(K).estimate(project_face(rot(0, 10), np.array([0, 0, 55.0]), K))
         eyes = EyeMeasurements(0.3, 0.3, (0.5, 0.0), (0.5, 0.0), 0.0)
         res = est.estimate(np.zeros((480, 640), np.uint8), pose, eyes)
-        assert res.source == "appearance" and np.isfinite(res.pitchyaw).all()
+        assert res.source == "appearance:g.onnx" and np.isfinite(res.pitchyaw).all()
         assert res.features.shape == (8,)
 
 

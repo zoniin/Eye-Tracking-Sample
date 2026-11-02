@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .events import EventConfig, detect_events
-from .features import compute_window_features
+from .features import compute_window_features, windows_from_session
 from .sample import read_frames_csv
 
 
@@ -42,9 +42,29 @@ def session_meta(session_dir: Path) -> Dict:
     return json.loads(p.read_text()) if p.is_file() else {}
 
 
+def baseline_stats(rows: List[Dict]) -> Dict[str, List[float]]:
+    """Per-feature [mean, sd] over a session's sliding windows (label-independent)."""
+    import numpy as np
+    stats: Dict[str, List[float]] = {}
+    keys = {k for r in rows for k in r if k != "t"}
+    for k in sorted(keys):
+        v = np.array([r.get(k, math.nan) for r in rows], dtype=float)
+        v = v[np.isfinite(v)]
+        if v.size:
+            stats[k] = [float(v.mean()), float(v.std()) if v.size > 1 else 0.0]
+    return stats
+
+
 def build_examples(session_dir: str, window_s: float = 30.0, label_source: str = "probes",
                    aoi_names: Optional[Sequence[str]] = None, min_presence: float = 0.0,
-                   event_cfg: Optional[EventConfig] = None) -> List[Dict]:
+                   event_cfg: Optional[EventConfig] = None,
+                   stats_out: Optional[Dict] = None, stats_hop_s: float = 10.0) -> List[Dict]:
+    """Labelled windows for one session.
+
+    If ``stats_out`` is a dict, the session's baseline statistics (computed from
+    *all* sliding windows, labelled or not) are stored in it under the session
+    name - used for per-session feature normalisation without label leakage.
+    """
     d = Path(session_dir)
     labels = read_labels(d, label_source)
     if not labels or not (d / "frames.csv").is_file():
@@ -54,6 +74,9 @@ def build_examples(session_dir: str, window_s: float = 30.0, label_source: str =
         aoi_names = meta.get("aoi_names", [])
     samples = read_frames_csv(d / "frames.csv")
     stream = detect_events(samples, event_cfg)
+    if stats_out is not None:
+        stats_out[d.name] = baseline_stats(
+            windows_from_session(samples, stream, window_s, stats_hop_s, aoi_names))
     rows = []
     for t, label in labels:
         t_end = t - 0.05                      # exclude the probe display itself
@@ -62,7 +85,7 @@ def build_examples(session_dir: str, window_s: float = 30.0, label_source: str =
         if feats.get("face_present_ratio", 0.0) < min_presence:
             continue
         row = {"participant": meta.get("participant", d.name.split("_")[0]),
-               "session": d.name, "t": round(t, 3), "label": label}
+               "session": d.name, "t": round(t, 3), "label": label, "window_s": window_s}
         row.update({k: (v if isinstance(v, float) and math.isfinite(v) else "")
                     for k, v in feats.items()})
         rows.append(row)

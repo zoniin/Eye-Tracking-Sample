@@ -153,7 +153,8 @@ def simulate_segment(state: str, t0: float, duration_s: float, rng: np.random.Ge
             t=float(ts[j]), face=True, ear=0.30 - 0.18 * closure[j], closure=float(closure[j]),
             gaze_pitch=-gy - 15.0, gaze_yaw=gx,
             gaze_x_deg=math.nan if closed else gx, gaze_y_deg=math.nan if closed else gy,
-            screen_x=x, screen_y=y, aoi=layout.classify(x, y),
+            screen_x=math.nan if closed else x, screen_y=math.nan if closed else y,
+            aoi="" if closed else layout.classify(x, y),
             head_pitch=float(pitch[j]), head_yaw=float(yaw[j]), head_roll=0.0,
             head_distance=distance_cm, brow_down=float(brow[j]), brow_inner_up=0.1,
             eye_squint=0.2, eye_wide=0.05, jaw_open=float(jaw[j])))

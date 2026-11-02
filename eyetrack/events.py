@@ -124,6 +124,12 @@ class FixationDetector:
         self._win, self._in_fix = [], False
         return fix
 
+    def bridge(self, t: float) -> None:
+        """Treat ``t`` as still tracked (e.g. during a normal blink), so a blink
+        does not count as a tracking gap that splits the ongoing fixation."""
+        if self._last_t is not None:
+            self._last_t = t
+
     def update(self, s: FrameSample) -> Optional[Fixation]:
         """Feed one sample; returns a Fixation when one has just ended."""
         out = None
@@ -166,8 +172,10 @@ class BlinkDetector:
     def update(self, s: FrameSample) -> Optional[Blink]:
         out = None
         if not s.face or math.isnan(s.closure):
-            # Losing the face mid-blink makes the closure unmeasurable: drop it.
+            # Losing the face mid-blink makes the closure unmeasurable: drop it,
+            # and forget the last timestamp so the next blink is timed afresh.
             self._closed_since = None
+            self._last_t = None
             return None
         if self._closed_since is None:
             if s.closure >= self.cfg.blink_close:
@@ -175,7 +183,7 @@ class BlinkDetector:
                 # start between the last open frame and this one
                 self._closed_since = 0.5 * (self._closed_since + s.t)
         elif s.closure <= self.cfg.blink_open:
-            end = 0.5 * ((self._last_t or s.t) + s.t)
+            end = 0.5 * ((self._last_t if self._last_t is not None else s.t) + s.t)
             dur_ms = (end - self._closed_since) * 1000.0
             if self.cfg.min_blink_ms <= dur_ms <= self.cfg.max_closure_ms:
                 kind = "long_closure" if dur_ms > self.cfg.long_closure_ms else "blink"
@@ -187,6 +195,10 @@ class BlinkDetector:
     @property
     def eyes_closed(self) -> bool:
         return self._closed_since is not None
+
+    @property
+    def closed_since(self) -> Optional[float]:
+        return self._closed_since
 
 
 @dataclass
@@ -208,11 +220,17 @@ class EventStream:
         if b is not None:
             self.blinks.append(b)
             new.append(b)
-        # Samples with closed eyes carry no gaze information.
-        gaze_sample = s
-        if self._blink.eyes_closed and s.has_gaze:
-            gaze_sample = FrameSample(t=s.t, face=s.face)
-        f = self._fix.update(gaze_sample)
+        # Samples with closed eyes carry no gaze information.  A normal blink is
+        # bridged (the fixation continues if the eyes land on the same spot);
+        # a long closure ends the fixation like any other tracking gap.
+        if self._blink.eyes_closed and s.face:
+            closed_ms = (s.t - self._blink.closed_since) * 1000.0
+            if closed_ms <= self.cfg.long_closure_ms:
+                self._fix.bridge(s.t)
+                return new
+            f = self._fix.update(FrameSample(t=s.t, face=s.face))
+        else:
+            f = self._fix.update(s)
         if f is not None:
             new.extend(self._add_fixation(f))
         return new
@@ -222,7 +240,9 @@ class EventStream:
         if self.fixations:
             prev = self.fixations[-1]
             gap = f.start - prev.end
-            if 0 <= gap * 1000.0 <= self.cfg.max_saccade_ms:
+            blink_between = any(b.end >= prev.end and b.start <= f.start
+                                for b in self.blinks[-3:])
+            if 0 <= gap * 1000.0 <= self.cfg.max_saccade_ms and not blink_between:
                 amp = math.hypot(f.x_deg - prev.x_deg, f.y_deg - prev.y_deg)
                 sac = Saccade(prev.end, f.start, amp, prev.aoi, f.aoi)
                 self.saccades.append(sac)

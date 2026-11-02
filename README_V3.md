@@ -100,6 +100,7 @@ Keys in the live window: **Q** quit, **C** (re)calibrate, **P** show a probe now
    python training/train_behavior.py train --dataset data/behavior.csv --participant-normalize --out models/behavior.joblib
    ```
    This writes `models/behavior.report.json` with balanced accuracy, macro-F1, the confusion matrix, per-participant results and feature importance.
+   `--participant-normalize` z-scores features against each session's own baseline. The baseline is computed from all of the session's windows, labeled or not, so no label information leaks. Live, the model collects about 60 s of baseline before it starts predicting. The model also remembers its window length, and the live pipeline uses it automatically.
 4. **Deploy** with `--behavior-model models/behavior.joblib`.
 
 To try the workflow without a study, `python -m eyetrack simulate --participants 8` writes **synthetic**
@@ -171,5 +172,5 @@ eyetrack/
   models/gaze_nets.py  LeNet, ResNet-8 (MPIIGaze), EyeNet-GRU (EVE)
 training/
   train_mpiigaze.py  train_eve.py  train_behavior.py  common.py
-tests/test_eyetrack.py   78 tests total in tests/ (no webcam needed)
+tests/test_eyetrack.py   83 tests total in tests/ (no webcam needed)
 ```

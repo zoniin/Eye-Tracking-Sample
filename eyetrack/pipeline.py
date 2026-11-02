@@ -133,16 +133,14 @@ class EyeTrackingPipeline:
     def _fill_gaze(self, s: FrameSample, gaze) -> None:
         if gaze is None or gaze.pitchyaw is None:
             return
-        eyes_open = not (s.closure >= self.cfg.events.blink_close)
-        pitch, yaw = np.degrees(gaze.pitchyaw)
-        if eyes_open:
-            pitch, yaw = self._gaze_filter(np.array([pitch, yaw]), s.t)
+        if s.closure >= self.cfg.events.blink_close:
+            return      # closed eyes: no gaze, screen point or AOI for this frame
+        pitch, yaw = self._gaze_filter(np.array(np.degrees(gaze.pitchyaw)), s.t)
         s.gaze_pitch, s.gaze_yaw = float(pitch), float(yaw)
         dist = s.head_distance if np.isfinite(s.head_distance) else self.cfg.default_distance_cm
         if self.calibration is not None and gaze.source == self.calibration.source:
             sx, sy = self.calibration.predict(gaze.features)[0]
-            if eyes_open:
-                sx, sy = self._screen_filter(np.array([sx, sy]), s.t)
+            sx, sy = self._screen_filter(np.array([sx, sy]), s.t)
             s.screen_x, s.screen_y = float(sx), float(sy)
             # gaze position in visual degrees (for I-DT), screen centre = 0
             s.gaze_x_deg = math.degrees(math.atan2((sx - 0.5) * self.cfg.screen_width_cm, dist))

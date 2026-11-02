@@ -81,6 +81,8 @@ class AppearanceGazeEstimator:
         import onnxruntime as ort
 
         model_path = Path(model_path)
+        # calibrations are only valid for the exact model they were made with
+        self.source = f"appearance:{model_path.name}"
         meta_path = model_path.with_suffix(".json")
         self.meta: Dict = json.loads(meta_path.read_text()) if meta_path.is_file() else {}
         self.arch = self.meta.get("arch", "resnet8")

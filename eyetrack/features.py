@@ -125,9 +125,11 @@ def compute_window_features(samples: List[FrameSample], fixations: Iterable[Fixa
                             perclos_threshold: float = 0.7) -> Dict[str, float]:
     """Features over ``[t_start, t_end]``.  Events are clipped to the window."""
     win = [s for s in samples if t_start <= s.t <= t_end]
-    fix = [f for f in fixations if f.end >= t_start and f.start <= t_end]
-    sac = [s for s in saccades if s.end >= t_start and s.start <= t_end]
-    bl = [b for b in blinks if b.end >= t_start and b.start <= t_end]
+    # Only events that have *ended* by t_end: this is all the live pipeline can
+    # see, so offline/training features must not peek past the window end.
+    fix = [f for f in fixations if f.end >= t_start and f.end <= t_end]
+    sac = [s for s in saccades if s.end >= t_start and s.end <= t_end]
+    bl = [b for b in blinks if b.end >= t_start and b.end <= t_end]
     dur = max(t_end - t_start, 1e-6)
     feats: Dict[str, float] = {k: math.nan for k in feature_names(aoi_names)}
 
