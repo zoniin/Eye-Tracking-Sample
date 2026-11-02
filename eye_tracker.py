@@ -696,7 +696,7 @@ def run(source, enable_focus_tracking: bool = True,
             print("[INFO] dlib initialized successfully.")
         except RuntimeError as exc:
             print(f"[ERROR] Could not load shape predictor: {exc}")
-            print("  Download it with:  bash setup.sh")
+            print("  Download it with:  bash scripts/download_dlib_model.sh")
             sys.exit(1)
 
     # Open video source

@@ -213,8 +213,8 @@ Eye-Tracking-Sample/
 ├── eye_tracker_v2.py      # Main application
 ├── config.yaml             # Your configuration
 ├── output/                 # Exported data/videos
-├── README_V2.md           # Full documentation
-├── USAGE_GUIDE.md         # Detailed examples
+├── docs/v2-guide.md       # Full documentation
+├── docs/v2-usage.md       # Detailed examples
 └── examples/
     └── analyze_session.py  # Data analysis
 ```
@@ -222,8 +222,8 @@ Eye-Tracking-Sample/
 ## Getting Help
 
 1. Press `H` during tracking for keyboard help
-2. Check [USAGE_GUIDE.md](USAGE_GUIDE.md) for examples
-3. Read [README_V2.md](README_V2.md) for full docs
+2. Check [V2 usage guide](v2-usage.md) for examples
+3. Read [V2 guide](v2-guide.md) for full docs
 4. Open GitHub issue for bugs
 
 ## Quick Tips

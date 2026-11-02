@@ -1,4 +1,6 @@
 @echo off
+cd /d "%~dp0.."
+REM ^ run from the repository root
 REM Quick Start Script for Eye Tracker V2
 REM This script helps you get started quickly on Windows
 
@@ -62,9 +64,10 @@ echo [3] Run with data export
 echo [4] Run with recording
 echo [5] View help
 echo [6] Exit
+echo [7] Run V3 research pipeline (calibration + AOIs + self-report probes)
 echo.
 
-set /p choice="Enter choice (1-6): "
+set /p choice="Enter choice (1-7): "
 
 if "%choice%"=="1" (
     echo.
@@ -87,6 +90,10 @@ if "%choice%"=="1" (
     python eye_tracker_v2.py --help
     echo.
     pause
+) else if "%choice%"=="7" (
+    echo.
+    echo Starting V3 pipeline...
+    python -m eyetrack live --calibrate --aoi configs/aoi_programming.yaml --probes
 ) else (
     echo.
     echo Goodbye!

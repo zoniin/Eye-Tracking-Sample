@@ -244,6 +244,6 @@ if __name__ == '__main__':
 ## Questions?
 
 Check the main documentation:
-- [README_V2.md](../README_V2.md) - Full feature documentation
-- [USAGE_GUIDE.md](../USAGE_GUIDE.md) - Practical usage examples
+- [V2 guide](../docs/v2-guide.md) - Full feature documentation
+- [V2 usage guide](../docs/v2-usage.md) - Practical usage examples
 - [GitHub Issues](https://github.com/zoniin/Eye-Tracking-Sample/issues) - Ask questions

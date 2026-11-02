@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# setup.sh — Optional: Download and extract the dlib 68-point shape predictor model.
+# download_dlib_model.sh — Optional: Download and extract the dlib 68-point shape predictor model.
 # MediaPipe is now the default backend and requires no additional downloads!
 # Only run this if you want to use the legacy dlib backend (--backend dlib).
 
 set -euo pipefail
+cd "$(dirname "$0")/.."   # model goes to the repository root
 
 MODEL_BZ2="shape_predictor_68_face_landmarks.dat.bz2"
 MODEL_DAT="shape_predictor_68_face_landmarks.dat"

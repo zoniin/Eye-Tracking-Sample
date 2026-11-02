@@ -550,7 +550,7 @@ All while maintaining the original simplicity and adding the V2 version without 
 ---
 
 **Questions? See:**
-- [README_V2.md](README_V2.md) - Complete documentation
-- [USAGE_GUIDE.md](USAGE_GUIDE.md) - Practical examples
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - How to migrate
+- [V2 guide](v2-guide.md) - Complete documentation
+- [V2 usage guide](v2-usage.md) - Practical examples
+- [Migration guide](migration-v1-to-v2.md) - How to migrate
 - [GitHub Issues](https://github.com/zoniin/Eye-Tracking-Sample/issues) - Get help

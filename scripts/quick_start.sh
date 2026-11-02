@@ -3,6 +3,7 @@
 # This script helps you get started quickly on Linux/macOS
 
 set -e
+cd "$(dirname "$0")/.."   # run from the repository root
 
 echo "========================================"
 echo "Eye Tracker V2 - Quick Start"
@@ -63,9 +64,10 @@ echo "[3] Run with data export"
 echo "[4] Run with recording"
 echo "[5] View help"
 echo "[6] Exit"
+echo "[7] Run V3 research pipeline (calibration + AOIs + self-report probes)"
 echo ""
 
-read -p "Enter choice (1-6): " choice
+read -p "Enter choice (1-7): " choice
 
 case $choice in
     1)
@@ -93,6 +95,11 @@ case $choice in
         python3 eye_tracker_v2.py --help
         echo ""
         read -p "Press enter to continue..."
+        ;;
+    7)
+        echo ""
+        echo "Starting V3 pipeline..."
+        python3 -m eyetrack live --calibrate --aoi configs/aoi_programming.yaml --probes
         ;;
     *)
         echo ""

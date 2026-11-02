@@ -488,8 +488,8 @@ log_file: null
 
 ## Next Steps
 
-- Read [README_V2.md](README_V2.md) for complete documentation
-- Check [config.yaml](config.yaml) for all configuration options
+- Read [V2 guide](v2-guide.md) for complete documentation
+- Check [config.yaml](../configs/default.yaml) for all configuration options
 - Run tests: `pytest tests/`
 - Join discussions on GitHub
 

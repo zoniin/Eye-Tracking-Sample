@@ -38,7 +38,7 @@ pip install dlib>=19.24.0
 pip install opencv-python numpy imutils
 
 # Download model (100MB)
-bash setup.sh
+bash scripts/download_dlib_model.sh
 ```
 
 ### V2 Installation
@@ -371,7 +371,7 @@ If you encounter issues during migration:
 
 1. **Check logs**: Use `log_level: DEBUG` in config
 2. **Compare side-by-side**: Run V1 and V2 simultaneously
-3. **Read docs**: See [README_V2.md](README_V2.md) and [USAGE_GUIDE.md](USAGE_GUIDE.md)
+3. **Read docs**: See [V2 guide](v2-guide.md) and [V2 usage guide](v2-usage.md)
 4. **Ask questions**: Open a GitHub issue
 
 ## Rollback Plan

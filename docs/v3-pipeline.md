@@ -13,8 +13,10 @@ Webcam data capture ─► Face & eye detection ─► Eye event detection ─�
                                                               Researchers: time-stamped logs ◄──────┘
 ```
 
-It lives in the `eyetrack/` package; V1 (`eye_tracker.py`) and V2 (`eye_tracker_v2.py`) are unchanged
-apart from a compatibility fix (V2 now also runs on MediaPipe releases without `mp.solutions`).
+It lives in the `eyetrack/` package. V1 (`eye_tracker.py`) and V2 (`eye_tracker_v2.py`) remain
+available as separate entry points. V3 also adopts the time-based measurement approach from the `v2`
+branch (`temporal_eyes.py`): PERCLOS and the per-minute rates are weighted by valid observed time, with
+tracking gaps treated as missing evidence, so results don't depend on the camera's frame rate.
 
 ---
 
@@ -27,7 +29,7 @@ apart from a compatibility fix (V2 now also runs on MediaPipe releases without `
 | Gaze | 9 discrete directions from an iris bounding box | continuous gaze angles: geometric (iris offset + head pose) **or** CNNs from Model_MPIIGaze / Model_EVE on normalised eye patches |
 | Calibration | re-centres the "center" thresholds | 5/9/13-point **screen calibration** → regression to screen coordinates, held-out (leave-one-point-out) error reported |
 | Eye events | blink frame counter | **I-DT fixations** (Salvucci & Goldberg 2000, poster ref. [3]), saccades, blinks timed in ms, long eye closures |
-| Features | % centre gaze, blink rate, face presence | fixation count/duration, blink count/rate (Table 1) + PERCLOS, blink duration, yawns, AOI dwell, AOI switching & transition entropy, gaze dispersion, head motion, brow lowering |
+| Features | % centre gaze, blink rate, face presence | fixation count/duration, blink count/rate (Table 1) + time-weighted PERCLOS, blink duration, yawns, AOI dwell, AOI switching & transition entropy, gaze dispersion, head motion, brow lowering |
 | AOIs | – | configurable screen regions (code, instructions, compiler output, feedback) |
 | Behaviour | weighted "focus score" | **engaged / distracted / fatigued / confused / away** with reasons, smoothing, alerts; or a **trained classifier** |
 | Ground truth | – | **thought probes** (self-reports) during sessions → labelled dataset → leave-one-participant-out training |
@@ -120,7 +122,7 @@ python training/train_eve.py train   --data /path/to/eve_dataset_2 --epochs 10
 
 | File | Content |
 |---|---|
-| `frames.csv` | per frame: face, EAR, eye closure, gaze pitch/yaw, gaze in degrees, screen x/y, AOI, head pose and distance, blendshapes |
+| `frames.csv` | per frame: face, EAR, eye closure, gaze pitch/yaw, gaze in degrees, screen x/y, AOI, head pose and distance, blendshapes, raw per-eye iris offsets (for re-calibrating offline) |
 | `events.csv` | fixations (start, end, duration, position, AOI), saccades (amplitude, from/to AOI), blinks (kind) |
 | `windows.csv` | every second: all window features, state, raw state, class probabilities, reasons |
 | `probes.csv` | probe shown/answered time, latency, label |
@@ -172,5 +174,5 @@ eyetrack/
   models/gaze_nets.py  LeNet, ResNet-8 (MPIIGaze), EyeNet-GRU (EVE)
 training/
   train_mpiigaze.py  train_eve.py  train_behavior.py  common.py
-tests/test_eyetrack.py   83 tests total in tests/ (no webcam needed)
+tests/                   pytest suite, no webcam needed (python -m pytest tests)
 ```

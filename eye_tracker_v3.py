@@ -5,7 +5,7 @@ Thin wrapper so the newest version can be started like V1/V2::
 
     python eye_tracker_v3.py live --calibrate --aoi configs/aoi_programming.yaml --probes
 
-Equivalent to ``python -m eyetrack ...``; see README_V3.md.
+Equivalent to ``python -m eyetrack ...``; see docs/v3-pipeline.md.
 """
 
 from eyetrack.app import main

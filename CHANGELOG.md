@@ -2,6 +2,29 @@
 
 All notable changes to the Eye Tracking Sample project.
 
+## [3.0.0] - 2026-11 - Behaviour-classification pipeline (V3)
+
+### Added
+- `eyetrack/` package implementing the SIGCSE poster pipeline: MediaPipe Tasks landmarks and
+  blendshapes, canonical-face head pose, screen calibration, AOIs, I-DT fixations, saccades,
+  ms-timed blinks, windowed features, rule-based and learned behaviour classification, educator
+  alerts, thought probes, streaming session logs (`python -m eyetrack`).
+- Gaze CNNs ported from Model_MPIIGaze (LeNet, ResNet-8) and Model_EVE (streaming EyeNet-GRU) with
+  MPIIGaze-style eye normalisation and ONNX inference; trainers in `training/`.
+- Behaviour-classifier training with leave-one-participant-out validation.
+- From the `v2` branch: `temporal_eyes.py` time-based blink and closed-time measures for V2;
+  V3 PERCLOS and rates are now time-weighted over valid observed time as well.
+
+### Fixed
+- V2 runs on MediaPipe releases without `mp.solutions` (Tasks API fallback).
+- V2 head pitch was off by ~180 degrees; V2 JSON export crashed on numpy floats.
+
+### Changed
+- Repository reorganised: guides and reports are in `docs/`, helper scripts are in `scripts/`
+  (`setup.sh` is now `scripts/download_dlib_model.sh`, `test_camera.py` is now
+  `scripts/check_camera.py`). Machine-specific install scripts were replaced by
+  `scripts/install_dlib_windows.bat`.
+
 ## [2.0.0] - 2024 - Major Overhaul
 
 ### 🚀 New Features
@@ -208,7 +231,7 @@ All notable changes to the Eye Tracking Sample project.
 ### 🔄 Migration Path
 - V1 (`eye_tracker.py`) still works - no breaking changes to legacy code
 - V2 can run alongside V1
-- See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for detailed migration steps
+- See [Migration guide](docs/migration-v1-to-v2.md) for detailed migration steps
 
 ### 📦 Installation Changes
 
@@ -291,6 +314,6 @@ New capabilities in V2:
 ---
 
 **For more information, see:**
-- [README_V2.md](README_V2.md) - Full V2 documentation
-- [USAGE_GUIDE.md](USAGE_GUIDE.md) - Practical examples
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - V1 to V2 migration
+- [V2 guide](docs/v2-guide.md) - Full V2 documentation
+- [V2 usage guide](docs/v2-usage.md) - Practical examples
+- [Migration guide](docs/migration-v1-to-v2.md) - V1 to V2 migration
